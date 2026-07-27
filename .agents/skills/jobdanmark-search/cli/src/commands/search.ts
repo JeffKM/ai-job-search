@@ -1,6 +1,7 @@
 import { defineCommand, option } from "@bunli/core"
 import { z } from "zod"
 import { apiPost, writeError, BASE_URL } from "../helpers.js"
+import { companyTypeFilterMeta, parseCompanyType } from "../../../../shared/kr-company-type.js"
 
 interface ApiSearchItem {
   title: string
@@ -111,12 +112,26 @@ export const search = defineCommand({
     limit: option(z.coerce.number().int().min(1).optional(), {
       description: "Cap total results returned by CLI (client-side)",
     }),
+    "company-type": option(z.string().optional(), {
+      short: "t",
+      description: "Korean company-size filter (not supported on Jobdanmark; recorded in meta only)",
+    }),
     format: option(z.enum(["json", "table", "plain"]).default("json"), {
       description: "Output format: json, table, plain",
     }),
   },
   handler: async ({ flags, signal }) => {
     if (signal.aborted) return
+
+    let companyTypeMeta: Record<string, unknown> = {}
+    if (flags["company-type"]) {
+      const parsed = parseCompanyType(flags["company-type"])
+      if (!parsed) {
+        writeError(`Invalid --company-type: ${flags["company-type"]}`, "BAD_COMPANY_TYPE")
+        process.exit(1)
+      }
+      companyTypeMeta = companyTypeFilterMeta(parsed, "not_applicable")
+    }
 
     const filters: Array<{ type: string; value: string | number; displayText: string }> = []
 
@@ -165,6 +180,7 @@ export const search = defineCommand({
         totalItems: data.totalItems,
         itemsPrPage: data.itemsPrPage,
         totalPages: data.totalPages,
+        ...companyTypeMeta,
       }
 
       const output = { meta, results }

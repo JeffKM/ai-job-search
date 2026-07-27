@@ -10,6 +10,7 @@
 import { runSearch, type SearchOpts } from "./commands/search.js"
 import { runDetail, type DetailOpts } from "./commands/detail.js"
 import { baseUrl } from "./helpers.js"
+import { COMPANY_TYPE_HELP, parseCompanyType } from "../../../shared/kr-company-type.js"
 
 interface Flags {
   _: string[]
@@ -17,7 +18,7 @@ interface Flags {
 }
 
 // Short-flag aliases.
-const ALIAS: Record<string, string> = { q: "query", n: "limit" }
+const ALIAS: Record<string, string> = { q: "query", n: "limit", t: "company-type" }
 
 function parseFlags(argv: string[]): Flags {
   const flags: Flags = { _: [] }
@@ -80,6 +81,7 @@ SEARCH FLAGS
   --jobage <days>         Posted within N days (maps to posted_within_days).
   --page <n>              1-indexed page. Default 1.
   --limit, -n <n>         Results per page (API limit). Default 25.
+  --company-type, -t      Korean company-size filter (client-side heuristics): ${COMPANY_TYPE_HELP}
   --format <fmt>          json (default) | table | plain.
 
 FACET FILTERS (values from freehire.dev's controlled vocabularies; comma = OR)
@@ -151,12 +153,26 @@ async function main(): Promise<number> {
       facets[key] = (facets[key] ?? []).concat(vals)
     }
 
+    let companyType: SearchOpts["companyType"]
+    if (flags["company-type"] !== undefined) {
+      const parsed = parseCompanyType(flags["company-type"] as string)
+      if (!parsed) {
+        process.stderr.write(
+          JSON.stringify({ error: `Invalid --company-type (use: ${COMPANY_TYPE_HELP})`, code: "BAD_COMPANY_TYPE" }) +
+            "\n",
+        )
+        return 1
+      }
+      companyType = parsed
+    }
+
     const opts: SearchOpts = {
       query: stringFlag(flags.query),
       jobage: flags.jobage ? parseInt(flags.jobage as string, 10) : 9999,
       page: flags.page ? Math.max(1, parseInt(flags.page as string, 10)) : 1,
       limit: flags.limit ? Math.max(1, parseInt(flags.limit as string, 10)) : 25,
       format: (["json", "table", "plain"].includes(fmt) ? fmt : "json") as SearchOpts["format"],
+      companyType,
       regions: commaList(flags.region),
       countries: commaList(flags.country),
       cities: commaList(flags.city),

@@ -1,6 +1,7 @@
 import { defineCommand, option } from "@bunli/core"
 import { z } from "zod"
 import { apiFetch, writeError } from "../helpers.js"
+import { companyTypeFilterMeta, parseCompanyType } from "../../../../shared/kr-company-type.js"
 
 export interface SearchApiResponse {
   jobAds: JobAdRaw[]
@@ -167,12 +168,26 @@ export const search = defineCommand({
     limit: option(z.coerce.number().int().min(1).optional(), {
       description: "Cap total results returned by CLI",
     }),
+    "company-type": option(z.string().optional(), {
+      short: "t",
+      description: "Korean company-size filter (not supported on Jobnet; recorded in meta only)",
+    }),
     format: option(z.enum(["json", "table", "plain"]).default("json"), {
       description: "Output format: json, table, plain",
     }),
   },
   handler: async ({ flags, signal }) => {
     if (signal.aborted) return
+
+    let companyTypeMeta: Record<string, unknown> = {}
+    if (flags["company-type"]) {
+      const parsed = parseCompanyType(flags["company-type"])
+      if (!parsed) {
+        writeError(`Invalid --company-type: ${flags["company-type"]}`, "BAD_COMPANY_TYPE")
+        process.exit(1)
+      }
+      companyTypeMeta = companyTypeFilterMeta(parsed, "not_applicable")
+    }
 
     const params = buildSearchParams(flags)
 
@@ -182,6 +197,7 @@ export const search = defineCommand({
       if (signal.aborted) return
 
       const output = createSearchOutput(data, flags)
+      output.meta = { ...output.meta, ...companyTypeMeta }
 
       if (flags.format === "json") {
         console.log(JSON.stringify(output, null, 2))

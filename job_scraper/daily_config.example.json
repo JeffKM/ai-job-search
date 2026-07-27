@@ -1,0 +1,7 @@
+{
+  "company_type": "major",
+  "queries": ["개발", "엔지니어", "데이터", "기획"],
+  "limit_per_query": 20,
+  "notion_fit": "high,medium",
+  "include_jobplanet": false
+}

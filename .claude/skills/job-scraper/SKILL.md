@@ -69,6 +69,7 @@ For each **enabled** portal skill:
 3. Scope to the last 14 days using the portal's supported recency flag (`--jobage`, `--since <YYYY-MM-DD>`, `--order PublicationDate`, etc. — as documented per portal).
 4. Cap results to ~20 per call using the portal's limit flag.
 5. Use `--format json` for machine-readable output.
+6. When the user asks for large-enterprise / startup / SME-only results, pass `--company-type` (alias `-t`) using the portal's documented values — e.g. `--company-type major` for 대기업. Korean portals use native URL filters where available; others apply client-side heuristics or record `company_type_mode: not_applicable` in meta.
 
 Run all portal CLI calls in parallel where possible using the Agent tool. Collect all `results` arrays into a single pool for Step 2, keeping each result tagged with its source portal skill (for Step 2 `detail` lookups).
 
@@ -88,9 +89,13 @@ Use the site-specific query strings from `search-queries.md` directly as WebSear
 For each promising result from Step 1:
 
 **From CLI results:** Search output already includes title, company, location, date,
-and URL. For jobs worth a deeper look, fetch full detail with that portal's `detail`
+and URL. For jobs worth a deeper look (especially every **high** and **medium** fit
+candidate you plan to present), fetch full detail with that portal's `detail`
 command (see its SKILL.md — do not guess flags) to extract **key requirements**,
-**application deadline**, and a brief description snippet.
+**application deadline / 접수기간**, and a brief description snippet. Persist
+`deadline` on the `seen_jobs.json` entry whenever the detail response provides it,
+and always show the Deadline column in the Step 5 table (use `—` or `상시채용` when
+unknown / open-ended).
 
 **From WebSearch results:** Use `WebFetch` on the posting URL and extract the same
 fields manually.
@@ -120,11 +125,19 @@ For each new job, do a rapid fit check (NOT the full evaluation from `04-job-eva
       "first_seen": "YYYY-MM-DD",
       "fit": "high/medium/low",
       "status": "new/skipped/evaluated/ranked/expired",
-      "portal": "<source portal skill, e.g. jobindex-search>"
+      "portal": "<source portal skill, e.g. jobindex-search>",
+      "deadline": "<application deadline or period if known, else omit/null>",
+      "location": "<location if known>",
+      "seniority": "신입|경력|신입·경력|인턴|미상",
+      "experience": "<years note if known, e.g. 3년+>",
+      "role": "백엔드|프론트엔드|풀스택|모바일|데이터|인프라/DevOps|AI/ML|기타개발|비개발|미상",
+      "stack": ["Python", "React"]
     }
   }
 }
 ```
+
+When fetching `detail` (Step 2), also extract **신입/경력**, **역할 트랙**(백엔드·프론트 등), and **기술 스택** from the posting text (or portal fields like Wanted `annual_from`/`requirements`). Persist them on the entry. Title-only heuristics are fine as a first pass; prefer detail text when available. Use `python3 tools/enrich_seen_jobs.py` (optionally `--fetch-detail`) to backfill.
 
 The `portal` field records which CLI skill produced the job (results are already tagged per portal in Step 1b - persist that tag here). Entries written before this field existed lack it; the health check (Step 4.75) attributes those by matching the URL's domain against each portal's base URL, so do not backfill.
 
@@ -193,9 +206,9 @@ skipped (disabled): <portal-name>, <portal-name>
 health: <portal-name> - degraded (company null on all 12 results); parsing anchors in .agents/skills/<portal-name>/url-reference.md
 health: <portal-name> - broken (0 results for the SKILL.md test query and a broader retry); parsing anchors in .agents/skills/<portal-name>/url-reference.md
 
-| # | Fit | Title | Company | Location | Deadline | URL |
-|---|-----|-------|---------|----------|----------|-----|
-| 1 | High | ... | ... | ... | ... | [Link](...) |
+| # | Fit | Seniority | Role | Stack | Title | Company | Location | Deadline | URL |
+|---|-----|-----------|------|-------|-------|---------|----------|----------|-----|
+| 1 | High | 경력 | 백엔드 | Python, Spring | ... | ... | ... | ... | [Link](...) |
 
 ### High-Match Highlights
 For each high-match job, add 2-3 bullet points:

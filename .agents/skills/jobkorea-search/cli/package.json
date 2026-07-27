@@ -1,0 +1,18 @@
+{
+  "name": "jobkorea-cli",
+  "version": "1.0.0",
+  "description": "CLI for searching jobs on JobKorea (잡코리아), South Korea",
+  "type": "module",
+  "main": "src/cli.ts",
+  "bin": { "jobkorea-search": "src/cli.ts" },
+  "scripts": {
+    "start": "bun run src/cli.ts",
+    "test": "bun test --timeout 30000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/bun": "latest"
+  }
+}

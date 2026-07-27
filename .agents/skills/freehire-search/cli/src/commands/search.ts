@@ -1,4 +1,9 @@
 import { apiGet, toResult, writeError, type FreehireJob, type JobResult } from "../helpers.js"
+import {
+  companyTypeFilterMeta,
+  filterByCompanyType,
+  type CompanyType,
+} from "../../../../shared/kr-company-type.js"
 
 export interface SearchOpts {
   query?: string
@@ -6,6 +11,7 @@ export interface SearchOpts {
   page: number
   limit: number
   format: "json" | "table" | "plain"
+  companyType?: CompanyType
   // Facet filters (already parsed into value lists; empty means unset).
   regions: string[]
   countries: string[]
@@ -93,21 +99,25 @@ export async function runSearch(opts: SearchOpts): Promise<number> {
     const env = await apiGet<FreehireJob[]>(`/api/v1/jobs/search?${buildQuery(opts).toString()}`)
     // The search endpoint returns an envelope; a null (404) is treated as empty.
     const jobs = env?.data ?? []
-    const rows = jobs.map(toResult)
+    let rows = jobs.map(toResult)
+    if (opts.companyType) {
+      rows = filterByCompanyType(rows, opts.companyType)
+    }
     const total = env?.meta?.total ?? rows.length
+
+    const meta = {
+      count: rows.length,
+      page: opts.page,
+      total,
+      ...(opts.companyType ? companyTypeFilterMeta(opts.companyType, "client") : {}),
+    }
 
     if (opts.format === "table") {
       process.stdout.write(renderTable(rows) + "\n")
     } else if (opts.format === "plain") {
       process.stdout.write(renderPlain(rows) + "\n")
     } else {
-      process.stdout.write(
-        JSON.stringify(
-          { meta: { count: rows.length, page: opts.page, total }, results: rows },
-          null,
-          2,
-        ) + "\n",
-      )
+      process.stdout.write(JSON.stringify({ meta, results: rows }, null, 2) + "\n")
     }
     return 0
   } catch (e) {

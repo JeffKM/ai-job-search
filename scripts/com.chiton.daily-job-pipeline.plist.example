@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Daily 09:00 local: scrape KR major jobs → Notion.
+
+  Setup:
+    1. Fill job_scraper/notion.env from notion.env.example
+    2. cp scripts/com.chiton.daily-job-pipeline.plist.example ~/Library/LaunchAgents/com.chiton.daily-job-pipeline.plist
+    3. Edit the plist: replace REPO_PATH with this repo's absolute path
+    4. launchctl load ~/Library/LaunchAgents/com.chiton.daily-job-pipeline.plist
+    5. Test: launchctl start com.chiton.daily-job-pipeline
+-->
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.chiton.daily-job-pipeline</string>
+    <key>WorkingDirectory</key>
+    <string>REPO_PATH</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/bash</string>
+      <string>REPO_PATH/scripts/daily_kr_notion_pipeline.sh</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+      <key>Hour</key>
+      <integer>9</integer>
+      <key>Minute</key>
+      <integer>0</integer>
+    </dict>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>REPO_PATH/job_scraper/logs/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>REPO_PATH/job_scraper/logs/launchd.err.log</string>
+    <key>RunAtLoad</key>
+    <false/>
+  </dict>
+</plist>
