@@ -1,6 +1,7 @@
 import { defineCommand, option } from "@bunli/core"
 import { z } from "zod"
 import { rssFetch, fetchWithUA, writeError, parseRssDescription, extractJobIdFromUrl, BASE_URL } from "../helpers.js"
+import { companyTypeFilterMeta, parseCompanyType } from "../../../../shared/kr-company-type.js"
 
 export const search = defineCommand({
   name: "search",
@@ -42,12 +43,26 @@ export const search = defineCommand({
     limit: option(z.coerce.number().int().min(1).optional(), {
       description: "Cap total results returned by CLI (client-side)",
     }),
+    "company-type": option(z.string().optional(), {
+      short: "t",
+      description: "Korean company-size filter (not supported on Jobbank; recorded in meta only)",
+    }),
     format: option(z.enum(["json", "table", "plain"]).default("json"), {
       description: "Output format: json, table, plain",
     }),
   },
   handler: async ({ flags, signal }) => {
     if (signal.aborted) return
+
+    let companyTypeMeta: Record<string, unknown> = {}
+    if (flags["company-type"]) {
+      const parsed = parseCompanyType(flags["company-type"])
+      if (!parsed) {
+        writeError(`Invalid --company-type: ${flags["company-type"]}`, "BAD_COMPANY_TYPE")
+        process.exit(1)
+      }
+      companyTypeMeta = companyTypeFilterMeta(parsed, "not_applicable")
+    }
 
     // Require at least one filter
     const hasFilter =
@@ -156,7 +171,7 @@ export const search = defineCommand({
         results = results.slice(0, flags.limit)
       }
 
-      const output = { meta: { total }, results }
+      const output = { meta: { total, ...companyTypeMeta }, results }
 
       if (flags.format === "json") {
         console.log(JSON.stringify(output, null, 2))

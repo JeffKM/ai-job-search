@@ -9,6 +9,7 @@
 
 import { runSearch, type SearchOpts } from "./commands/search.js"
 import { runDetail, type DetailOpts } from "./commands/detail.js"
+import { COMPANY_TYPE_HELP, parseCompanyType } from "../../../shared/kr-company-type.js"
 
 interface Flags {
   _: string[]
@@ -17,7 +18,7 @@ interface Flags {
 
 function parseFlags(argv: string[]): Flags {
   const flags: Flags = { _: [] }
-  const alias: Record<string, string> = { q: "query", l: "location", n: "limit" }
+  const alias: Record<string, string> = { q: "query", l: "location", n: "limit", t: "company-type" }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a.startsWith("--") || a.startsWith("-")) {
@@ -50,6 +51,7 @@ SEARCH FLAGS
   --remote <mode>         remote | hybrid | onsite. Filter by workplace type.
   --page <n>              1-indexed page (10 results/page). Default 1.
   --limit, -n <n>         Cap results emitted (client-side).
+  --company-type, -t      Korean company-size filter (client-side heuristics): ${COMPANY_TYPE_HELP}
   --format <fmt>          json (default) | table | plain.
 
 EXAMPLES
@@ -109,6 +111,19 @@ async function main(): Promise<number> {
       flags.limit = String(v)
     }
 
+    let companyType: SearchOpts["companyType"]
+    if (flags["company-type"] !== undefined) {
+      const parsed = parseCompanyType(flags["company-type"] as string)
+      if (!parsed) {
+        process.stderr.write(
+          JSON.stringify({ error: `Invalid --company-type (use: ${COMPANY_TYPE_HELP})`, code: "BAD_COMPANY_TYPE" }) +
+            "\n",
+        )
+        return 1
+      }
+      companyType = parsed
+    }
+
     const opts: SearchOpts = {
       query: typeof flags.query === "string" ? flags.query : undefined,
       location,
@@ -116,6 +131,7 @@ async function main(): Promise<number> {
       remote: typeof flags.remote === "string" ? flags.remote : undefined,
       page: flags.page ? Math.max(1, parseInt(flags.page as string, 10)) : 1,
       limit: flags.limit ? parseInt(flags.limit as string, 10) : undefined,
+      companyType,
       format: (["json", "table", "plain"].includes(fmt) ? fmt : "json") as SearchOpts["format"],
     }
     return runSearch(opts)

@@ -19,7 +19,12 @@ Follow these steps **in order**.
 - Nothing → sync ranked jobs with score ≥ 60 (Good Fit and above) plus every tracked application
 - `--min-score <N>` → override the score threshold
 - `--all` → sync every ranked job regardless of score
+- `--include-new` → also sync `status: new` scraped jobs (not yet ranked). Combine with `--fit` to narrow
+- `--fit <levels>` → when used with `--include-new`, only include those quick-fit levels (comma-separated: `high`, `medium`, `low`). Default with `--include-new`: `high,medium`
+- `--scraped-only` → sync only scraped `new` jobs (plus tracker rows); skip ranked-by-score selection. Implies `--include-new`
 - `--rebuild` → re-fetch and rewrite page bodies too (see Step 5 - normally bodies are write-once)
+
+For unattended daily updates (cron / launchd) without Notion MCP OAuth, use the API sync instead: `python3 tools/notion_sync_jobs.py` (see that script's `--help` and `scripts/daily_kr_notion_pipeline.sh`).
 
 ---
 
@@ -39,11 +44,12 @@ The command is **silently optional**: when the destination is not reachable, the
 Validate the cheap, local precondition before creating anything external. A run with nothing to sync must exit with **zero side effects** - no database created, no state file written.
 
 1. Read `job_scraper/seen_jobs.json` and `job_search_tracker.csv` (either may be missing).
-2. Select `seen_jobs.json` entries with status `ranked` whose `rank_score` meets the threshold from Step 0. `--all` lifts the threshold entirely.
-3. Every tracker row joins the sync set (an applied-to job always syncs, ranked or not), matched to `seen_jobs.json` entries case-insensitively on company + role where possible. Tracker rows with no `seen_jobs.json` entry sync too - build their Key as `<company>_<role>` lowercased with underscores.
-4. **Status precedence:** the tracker wins. A job that is `ranked` in `seen_jobs.json` but `interview` in the tracker syncs as `interview`. Jobs only in `seen_jobs.json` keep their stored status.
-5. **If the sync set is empty** (no ranked entries meet the threshold and there are no tracker rows), say "Nothing to sync - run `/scrape` and `/rank` first" (or, when jobs exist but all score below the threshold, say so and suggest `--min-score`/`--all`) and **stop**.
-6. State the counts before touching the destination: how many rows will be created or checked, and the threshold in effect.
+2. Select `seen_jobs.json` entries with status `ranked` whose `rank_score` meets the threshold from Step 0. `--all` lifts the threshold entirely. Skip this selection when `--scraped-only` is set.
+3. When `--include-new` or `--scraped-only` is set, also select `status: new` entries whose `fit` is in the `--fit` list (default `high,medium`). Jobs already selected as ranked are not duplicated.
+4. Every tracker row joins the sync set (an applied-to job always syncs, ranked or not), matched to `seen_jobs.json` entries case-insensitively on company + role where possible. Tracker rows with no `seen_jobs.json` entry sync too - build their Key as `<company>_<role>` lowercased with underscores.
+5. **Status precedence:** the tracker wins. A job that is `ranked` in `seen_jobs.json` but `interview` in the tracker syncs as `interview`. Jobs only in `seen_jobs.json` keep their stored status (including `new`).
+6. **If the sync set is empty**, say "Nothing to sync - run `/scrape` (and `/rank` if you want scored rows)" (or suggest `--include-new` / `--min-score` / `--all` as appropriate) and **stop**.
+7. State the counts before touching the destination: how many rows will be created or checked, and which filters are in effect (score threshold and/or fit levels).
 
 ---
 
@@ -62,8 +68,12 @@ Validate the cheap, local precondition before creating anything external. A run 
    | Company | rich text | |
    | Score | number | 0-100 from `rank_score` |
    | Verdict | select | Strong Fit / Good Fit / Moderate Fit / Weak Fit / Poor Fit |
-   | Status | select | ranked / applied / interview / offer / hired / rejected / no response / withdrawn / expired |
+   | Status | select | new / ranked / skipped / applied / interview / offer / hired / rejected / no response / withdrawn / expired |
    | Fit | select | high / medium / low (scraper quick-fit) |
+   | Seniority | select | 신입 / 경력 / 신입·경력 / 인턴 / 미상 |
+   | Experience | rich text | e.g. `3년+`, `1–3년` when stated |
+   | Role | select | 백엔드 / 프론트엔드 / 풀스택 / 모바일 / 데이터 / 인프라/DevOps / AI/ML / 기타개발 / 비개발 / 미상 |
+   | Tech stack | multi_select | inferred skills (Python, React, …); empty when unknown |
    | Deadline | date | omit when unknown |
    | First seen | date | |
    | Ranked | date | `rank_date` from `seen_jobs.json`; omit when not ranked |
@@ -71,6 +81,7 @@ Validate the cheap, local precondition before creating anything external. A run 
    | Channel | select | tracker `channel` column (e.g. portal / email / referral); options grow as values appear |
    | CV file | rich text | tracker `cv_file` column - the filename only, never document content |
    | Cover letter | rich text | tracker `cover_letter_file` column - the filename only, never document content |
+   | Portal | rich text | scraper skill name (e.g. `saramin-search`); omit when unknown |
    | URL | url | posting URL |
    | Key | rich text | the job's key in `seen_jobs.json` - dedup anchor, never edited by hand |
 
@@ -87,7 +98,7 @@ For each job in the sync set:
 
 1. Query the database for a page whose `Key` equals the job's key.
 2. **No match** → create the page with all properties from the Step 3 table, then write its body (Step 5).
-3. **Match** → update **properties only**: Status, Score, Verdict, Deadline, Ranked, Applied on, Channel, CV file, Cover letter. Properties are the always-current surface (bodies are write-once), so tracker updates recorded by `/outcome` reach the destination exclusively through them. Do not touch the page body - the user may have added their own notes there, and clobbering them breaks trust in the whole view. (`--rebuild` is the sole exception.)
+3. **Match** → update **properties only**: Status, Score, Verdict, Deadline, Ranked, Applied on, Channel, CV file, Cover letter, Seniority, Experience, Role, Tech stack. Properties are the always-current surface (bodies are write-once), so tracker updates recorded by `/outcome` reach the destination exclusively through them. Do not touch the page body - the user may have added their own notes there, and clobbering them breaks trust in the whole view. (`--rebuild` is the sole exception.)
 4. Never delete or archive pages, even for jobs that turned `expired` - set Status to `expired` instead. Rows the user added to the database by hand (no `Key` value) are invisible to this command.
 
 Batch politely: if the MCP server rate-limits, back off and continue; report any page that failed rather than retrying indefinitely.

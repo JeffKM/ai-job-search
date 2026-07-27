@@ -7,6 +7,10 @@ import {
   writeError,
   type JobCard,
 } from "../helpers.js"
+import {
+  companyTypeFilterMeta,
+  filterByCompanyType,
+} from "../../../../shared/kr-company-type.js"
 
 export interface SearchOpts {
   query?: string
@@ -15,6 +19,7 @@ export interface SearchOpts {
   remote?: string // "remote" | "hybrid" | "onsite"
   page: number
   limit?: number
+  companyType?: import("../../../../shared/kr-company-type.js").CompanyType
   format: "json" | "table" | "plain"
 }
 
@@ -55,7 +60,16 @@ export async function runSearch(opts: SearchOpts): Promise<number> {
   try {
     const html = await htmlFetch(buildUrl(opts))
     let cards = parseJobCards(html)
+    if (opts.companyType) {
+      cards = filterByCompanyType(cards, opts.companyType)
+    }
     if (opts.limit !== undefined && opts.limit >= 0) cards = cards.slice(0, opts.limit)
+
+    const meta = {
+      count: cards.length,
+      page: opts.page,
+      ...(opts.companyType ? companyTypeFilterMeta(opts.companyType, "client") : {}),
+    }
 
     if (opts.format === "table") {
       process.stdout.write(renderTable(cards) + "\n")
@@ -70,11 +84,7 @@ export async function runSearch(opts: SearchOpts): Promise<number> {
       )
     } else {
       process.stdout.write(
-        JSON.stringify(
-          { meta: { count: cards.length, page: opts.page }, results: cards },
-          null,
-          2,
-        ) + "\n",
+        JSON.stringify({ meta, results: cards }, null, 2) + "\n",
       )
     }
     return 0

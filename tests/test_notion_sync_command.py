@@ -51,6 +51,12 @@ class NotionSyncCommandSpec(unittest.TestCase):
             "spec lost the rule that CV/cover-letter content never syncs to Notion",
         )
 
+    def test_include_new_scraped_jobs_flag_documented(self):
+        text = COMMAND.read_text(encoding="utf-8")
+        self.assertIn("--include-new", text)
+        self.assertIn("--scraped-only", text)
+        self.assertIn("tools/notion_sync_jobs.py", text)
+
     @unittest.skipUnless(
         _HAVE_YAML,
         "PyYAML not installed (the CI Python-test job omits it; the lint job runs lint_skills.py directly)",

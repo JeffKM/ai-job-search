@@ -4,16 +4,35 @@
 
 ## Installed portal CLIs (primary for `/scrape`)
 
-`/scrape` discovers every portal skill under `.agents/skills/*/SKILL.md` and runs its CLI first. Shipped country-agnostic CLIs include `linkedin-search` and `freehire-search`; Danish demos and any skill you add with `/add-portal` are included the same way. You do **not** need a matching `site:` line below for those CLIs to run.
+`/scrape` discovers every portal skill under `.agents/skills/*/SKILL.md` and runs its CLI first. Shipped country-agnostic CLIs include `linkedin-search` and `freehire-search`; Danish demos, Korean portals (`wanted-search`, `jobkorea-search`, `saramin-search`, `jobplanet-search`), and any skill you add with `/add-portal` are included the same way. You do **not** need a matching `site:` line below for those CLIs to run.
 
 The `site:` query templates in this file are the **WebSearch fallback** — for portals without a CLI, company career pages, or when a CLI fails.
+
+### Company-size filter (`--company-type`)
+
+Installed Korean CLIs accept `--company-type` / `-t` on `search`:
+
+| Value | Meaning |
+|-------|---------|
+| `major` | 대기업 |
+| `enterprise-1000` | 매출 1000대 |
+| `mid` | 중견 |
+| `sme` | 중소 |
+| `startup` | 스타트업 |
+| `foreign` | 외국계 |
+| `public` | 공기업 |
+| `kospi` / `kosdaq` | 상장 (사람인 native) |
+
+Example: `/scrape 백엔드 — 대기업만` → CLIs run with `--company-type major`. Saramin/JobKorea use native URL filters where possible; Wanted/JobPlanet/LinkedIn use client-side heuristics on company names.
 
 ## Search Sites
 
 Primary (your market's job boards - scaffold one with `/add-portal`):
-- **[YOUR_JOB_BOARD]** - your market's largest general job board
+- **wanted.co.kr** - Wanted (원티드) startup/tech roles — `wanted-search` CLI
+- **jobkorea.co.kr** - JobKorea (잡코리아) general/corporate — `jobkorea-search` CLI
+- **saramin.co.kr** - Saramin (사람인) general/corporate — `saramin-search` CLI
 - **linkedin.com/jobs** - LinkedIn job listings (filter: [YOUR_COUNTRY] / [YOUR_CITY]); also covered by `linkedin-search` CLI
-- **[YOUR_INDUSTRY_JOB_BOARD]** - a niche/industry board for your field (optional)
+- **jobplanet.co.kr** - JobPlanet (잡플래닛) + company reviews — `jobplanet-search` CLI (Scrapling; run `bun run setup` once)
 - **[YOUR_ADDITIONAL_JOB_BOARD]** - another major board for your market (optional)
 
 Secondary (company career pages via Google):
@@ -28,8 +47,10 @@ Queries are grouped by priority. Each query should be combined with your locatio
 These match your strongest and most desired career direction.
 
 ```
-site:[YOUR_JOB_BOARD] "[YOUR_PRIMARY_JOB_TITLE]" [YOUR_CITY]
-site:[YOUR_JOB_BOARD] "[YOUR_KEY_SKILL]" [YOUR_CITY]
+site:wanted.co.kr "[YOUR_PRIMARY_JOB_TITLE]" [YOUR_CITY]
+site:jobkorea.co.kr "[YOUR_PRIMARY_JOB_TITLE]" [YOUR_CITY]
+site:saramin.co.kr "[YOUR_PRIMARY_JOB_TITLE]" [YOUR_CITY]
+site:jobplanet.co.kr "[YOUR_PRIMARY_JOB_TITLE]" [YOUR_CITY]
 site:linkedin.com/jobs "[YOUR_PRIMARY_JOB_TITLE]" [YOUR_COUNTRY]
 ```
 

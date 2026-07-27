@@ -1,6 +1,7 @@
 import { defineCommand, option } from "@bunli/core"
 import { z } from "zod"
 import { BASE_URL, htmlFetch, parseSearchPage, writeError, type JobCard } from "../helpers.js"
+import { companyTypeFilterMeta, parseCompanyType } from "../../../../shared/kr-company-type.js"
 
 export const search = defineCommand({
   name: "search",
@@ -22,6 +23,10 @@ export const search = defineCommand({
     limit: option(z.coerce.number().int().min(1).optional(), {
       description: "Cap total results returned by the CLI (client-side)",
     }),
+    "company-type": option(z.string().optional(), {
+      short: "t",
+      description: "Korean company-size filter (not supported on Jobindex; recorded in meta only)",
+    }),
     format: option(z.enum(["json", "table", "plain"]).default("json"), {
       description: "Output format: json, table, plain",
     }),
@@ -30,6 +35,16 @@ export const search = defineCommand({
     if (!flags.query) {
       writeError("--query is required", "MISSING_REQUIRED")
       process.exit(1)
+    }
+
+    let companyTypeMeta: Record<string, unknown> = {}
+    if (flags["company-type"]) {
+      const parsed = parseCompanyType(flags["company-type"])
+      if (!parsed) {
+        writeError(`Invalid --company-type: ${flags["company-type"]}`, "BAD_COMPANY_TYPE")
+        process.exit(1)
+      }
+      companyTypeMeta = companyTypeFilterMeta(parsed, "not_applicable")
     }
 
     if (signal.aborted) return
@@ -59,6 +74,7 @@ export const search = defineCommand({
           total,
           page: flags.page,
           perPage: 20,
+          ...companyTypeMeta,
         },
         results,
       }
