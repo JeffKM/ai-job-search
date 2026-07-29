@@ -60,8 +60,19 @@ def collect_results(paths: list[Path], stdin_ok: bool) -> list[tuple[str, dict[s
         for item in data.get("results") or []:
             if isinstance(item, dict):
                 out.append((portal, item))
-    if stdin_ok and not sys.stdin.isatty():
-        data = load_json_blob(sys.stdin.read())
+    # stdin은 파일 인자가 하나도 없을 때만 읽는다. 인자가 있는데도 읽으면 호출한
+    # 셸 루프의 stdin(예: 남은 검색어 목록)을 삼켜버려, 루프가 첫 항목만 돌고
+    # 끝나거나 JSON이 아닌 내용으로 크래시한다.
+    if stdin_ok and not paths and not sys.stdin.isatty():
+        raw = sys.stdin.read()
+        try:
+            data = load_json_blob(raw)
+        except json.JSONDecodeError:
+            print(
+                "stdin is not JSON - pass CLI output files as arguments instead.",
+                file=sys.stderr,
+            )
+            return out
         for item in data.get("results") or []:
             if isinstance(item, dict):
                 out.append(("stdin", item))

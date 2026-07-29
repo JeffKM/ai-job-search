@@ -61,8 +61,11 @@ run_search() {
     return 0
   fi
   echo "→ $portal  q=$query  t=$COMPANY_TYPE"
-  if bun run "$cli" search -q "$query" -t "$COMPANY_TYPE" -n "$LIMIT" --format json >"$out" 2>"${out}.err"; then
-    python3 tools/merge_scrape_results.py --portal "$portal" "$out" || true
+  # </dev/null: 아래 while 루프가 검색어 목록을 stdin으로 물고 있으므로,
+  # 자식 프로세스가 남은 검색어를 읽어가지 못하게 막는다.
+  if bun run "$cli" search -q "$query" -t "$COMPANY_TYPE" -n "$LIMIT" --format json \
+      >"$out" 2>"${out}.err" </dev/null; then
+    python3 tools/merge_scrape_results.py --portal "$portal" "$out" </dev/null || true
   else
     echo "WARN: $portal failed for '$query' (see ${out}.err)"
   fi

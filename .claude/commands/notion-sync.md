@@ -87,6 +87,8 @@ Validate the cheap, local precondition before creating anything external. A run 
 
    The tracker-sourced properties (Applied on, Channel, CV file, Cover letter) stay empty for jobs that have no tracker row - they fill in once `/outcome` records the application. Only filenames ever sync; document contents stay local.
 
+   On a first run, also sort the default view **`First seen` descending, then `Fit` ascending, then `Deadline` ascending** so the newest postings sit at the top and the best fits lead each day's batch. Do not re-apply the sort on later runs - the user may have reordered the view deliberately.
+
 4. **Existing database with missing properties:** if the located database predates a schema addition (a property from the table above does not exist), add the missing properties to the database before upserting. Never remove or retype existing properties.
 5. Write `job_scraper/notion_sync.json` with the database id and URL. This file is personal state and is gitignored - never commit it.
 
@@ -99,7 +101,12 @@ For each job in the sync set:
 1. Query the database for a page whose `Key` equals the job's key.
 2. **No match** → create the page with all properties from the Step 3 table, then write its body (Step 5).
 3. **Match** → update **properties only**: Status, Score, Verdict, Deadline, Ranked, Applied on, Channel, CV file, Cover letter, Seniority, Experience, Role, Tech stack. Properties are the always-current surface (bodies are write-once), so tracker updates recorded by `/outcome` reach the destination exclusively through them. Do not touch the page body - the user may have added their own notes there, and clobbering them breaks trust in the whole view. (`--rebuild` is the sole exception.)
-4. Never delete or archive pages, even for jobs that turned `expired` - set Status to `expired` instead. Rows the user added to the database by hand (no `Key` value) are invisible to this command.
+4. **Deadline cleanup** - archive (move to Notion's trash) pages whose `Deadline` is earlier than today, so the board only ever shows postings you can still apply to. Two exceptions, both mandatory:
+   - Pages whose Status is `applied`, `interview`, `offer`, `hired`, `rejected`, `no response`, or `withdrawn` - an application history outlives the posting, so keep them and leave Status alone.
+   - Rows the user added by hand (no `Key` value) - they are invisible to this command and must never be touched.
+
+   A job past its deadline is also dropped from the sync set, so an archived page never gets recreated on the next run. Postings with no deadline or an open-ended one (`상시채용`, `채용시마감`) are never treated as expired. Archiving is reversible from Notion's trash for 30 days; never use a hard delete.
+5. Apart from that cleanup, do not delete pages. Update **properties only** and leave page bodies alone.
 
 Batch politely: if the MCP server rate-limits, back off and continue; report any page that failed rather than retrying indefinitely.
 
