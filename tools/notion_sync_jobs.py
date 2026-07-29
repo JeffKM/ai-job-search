@@ -121,19 +121,23 @@ def notion_request(
         raise RuntimeError(f"Notion API {method} {path} → {e.code}: {detail}") from e
 
 
-def rich_text(value: str | None) -> list[dict[str, Any]]:
+def rich_text(value: str | None, link: str | None = None) -> list[dict[str, Any]]:
     if not value:
         return []
     text = str(value)[:2000]
-    return [{"type": "text", "text": {"content": text}}]
+    body: dict[str, Any] = {"content": text}
+    # 링크를 달아도 plain_text는 그대로라 Key의 `rich_text equals` 조회는 계속 맞는다.
+    if link and str(link).startswith(("http://", "https://")):
+        body["link"] = {"url": str(link)}
+    return [{"type": "text", "text": body}]
 
 
 def title_prop(value: str) -> dict[str, Any]:
     return {"title": rich_text(value)}
 
 
-def rich_prop(value: str | None) -> dict[str, Any]:
-    return {"rich_text": rich_text(value)}
+def rich_prop(value: str | None, link: str | None = None) -> dict[str, Any]:
+    return {"rich_text": rich_text(value, link)}
 
 
 def select_prop(value: str | None) -> dict[str, Any]:
@@ -506,7 +510,8 @@ def page_properties(job: dict[str, Any]) -> dict[str, Any]:
         "Cover letter": rich_prop(job.get("cover_letter_file")),
         "Portal": rich_prop(job.get("portal")),
         "URL": url_prop(job.get("url")),
-        "Key": rich_prop(job.get("key")),
+        # Key는 dedup 앵커지만 값이 곧 공고 주소라, 표에서 바로 눌러 들어갈 수 있게 링크를 건다
+        "Key": rich_prop(job.get("key"), job.get("url") or job.get("key")),
     }
     channel = job.get("channel")
     if channel:
@@ -527,10 +532,9 @@ def briefing_blocks(job: dict[str, Any]) -> list[dict[str, Any]]:
         f"Portal: {job.get('portal') or '—'}",
         f"Location: {job.get('location') or '—'}",
     ]
-    if job.get("url"):
-        lines.append(f"URL: {job['url']}")
     text = "\n".join(lines)[:1900]
-    return [
+    url = job.get("url")
+    blocks: list[dict[str, Any]] = [
         {
             "object": "block",
             "type": "heading_2",
@@ -563,6 +567,17 @@ def briefing_blocks(job: dict[str, Any]) -> list[dict[str, Any]]:
             },
         },
     ]
+    if url:
+        # 공고 주소는 별도 문단에 클릭 가능한 링크로 둔다
+        blocks.insert(
+            1,
+            {
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {"rich_text": rich_text(f"공고 바로가기: {url}", url)},
+            },
+        )
+    return blocks
 
 
 def upsert_job(token: str, db_id: str, job: dict[str, Any], rebuild: bool) -> str:
