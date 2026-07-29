@@ -83,7 +83,7 @@ Validate the cheap, local precondition before creating anything external. A run 
    | Cover letter | rich text | tracker `cover_letter_file` column - the filename only, never document content |
    | Portal | rich text | scraper skill name (e.g. `saramin-search`); omit when unknown |
    | URL | url | posting URL |
-   | Key | rich text | the job's key in `seen_jobs.json` - dedup anchor, never edited by hand |
+   | Key | rich text | the job's key in `seen_jobs.json` - dedup anchor, never edited by hand. Hyperlink the text to the posting URL so the column is clickable straight from the table; the link leaves `plain_text` untouched, so the `rich_text equals` lookup that prevents duplicate rows still matches |
 
    The tracker-sourced properties (Applied on, Channel, CV file, Cover letter) stay empty for jobs that have no tracker row - they fill in once `/outcome` records the application. Only filenames ever sync; document contents stay local.
 
