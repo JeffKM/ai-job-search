@@ -67,6 +67,17 @@ VERDICT_OPTIONS = [
 ]
 FIT_OPTIONS = ["high", "medium", "low"]
 
+# 마감이 지나도 노션에서 지우지 않는 상태 — 이미 지원했거나 결과가 나온 이력은 보존한다.
+KEEP_WHEN_EXPIRED = {
+    "applied",
+    "interview",
+    "offer",
+    "hired",
+    "rejected",
+    "no response",
+    "withdrawn",
+}
+
 
 def load_dotenv_files() -> None:
     for path in (REPO / ".env", REPO / ".env.local", REPO / "job_scraper" / "notion.env"):
@@ -187,6 +198,12 @@ def normalize_date(value: str | None) -> str | None:
     return None
 
 
+def is_expired(deadline: str | None, today: str) -> bool:
+    """마감일이 오늘보다 이전이면 만료. 상시채용·파싱 불가는 만료로 보지 않는다."""
+    iso = normalize_date(deadline)
+    return bool(iso) and iso < today
+
+
 def score_to_verdict(score: float | None) -> str | None:
     if score is None:
         return None
@@ -228,6 +245,8 @@ def build_sync_set(args: argparse.Namespace) -> list[dict[str, Any]]:
     tracker = load_tracker()
     fit_levels = {x.strip().lower() for x in args.fit.split(",") if x.strip()}
     by_key: dict[str, dict[str, Any]] = {}
+    today = date.today().isoformat()
+    skipped_expired = 0
 
     def upsert(key: str, row: dict[str, Any]) -> None:
         existing = by_key.get(key)
@@ -250,6 +269,10 @@ def build_sync_set(args: argparse.Namespace) -> list[dict[str, Any]]:
     if not args.scraped_only:
         for key, job in seen.items():
             if job.get("status") != "ranked":
+                continue
+            # 마감 지난 공고는 올리지 않는다 (정리된 페이지가 다음 날 되살아나는 것을 막는다)
+            if not args.keep_expired and is_expired(job.get("deadline"), today):
+                skipped_expired += 1
                 continue
             score = job.get("rank_score")
             try:
@@ -288,6 +311,9 @@ def build_sync_set(args: argparse.Namespace) -> list[dict[str, Any]]:
                 continue
             fit = (job.get("fit") or "").lower()
             if fit_levels and fit not in fit_levels:
+                continue
+            if not args.keep_expired and is_expired(job.get("deadline"), today):
+                skipped_expired += 1
                 continue
             upsert(
                 key,
@@ -356,6 +382,8 @@ def build_sync_set(args: argparse.Namespace) -> list[dict[str, Any]]:
             },
         )
 
+    if skipped_expired:
+        print(f"Skipped {skipped_expired} scraped jobs past their deadline.")
     return list(by_key.values())
 
 
@@ -585,6 +613,56 @@ def upsert_job(token: str, db_id: str, job: dict[str, Any], rebuild: bool) -> st
     return "updated"
 
 
+def purge_expired_pages(
+    token: str,
+    db_id: str,
+    today: str,
+    dry_run: bool = False,
+    sleep: float = 0.2,
+) -> tuple[int, int]:
+    """마감이 오늘보다 이전인 페이지를 노션 휴지통으로 보낸다.
+
+    지원 이력이 있는 상태(KEEP_WHEN_EXPIRED)는 건너뛴다.
+    반환값: (삭제한 수, 이력 때문에 보존한 수)
+    """
+    # 페이지네이션 중 아카이브하면 커서가 어긋나므로 먼저 전부 모은 뒤 지운다.
+    doomed: list[str] = []
+    kept = 0
+    cursor: str | None = None
+    while True:
+        body: dict[str, Any] = {
+            "filter": {"property": "Deadline", "date": {"before": today}},
+            "page_size": 100,
+        }
+        if cursor:
+            body["start_cursor"] = cursor
+        result = notion_request("POST", f"/databases/{db_id}/query", token, body)
+        for page in result.get("results") or []:
+            status = ((page.get("properties", {}).get("Status") or {}).get("select") or {}).get(
+                "name"
+            )
+            if (status or "").lower() in KEEP_WHEN_EXPIRED:
+                kept += 1
+                continue
+            doomed.append(page["id"])
+        if not result.get("has_more"):
+            break
+        cursor = result.get("next_cursor")
+
+    if dry_run:
+        return len(doomed), kept
+
+    removed = 0
+    for page_id in doomed:
+        try:
+            notion_request("PATCH", f"/pages/{page_id}", token, {"archived": True})
+            removed += 1
+        except RuntimeError as e:
+            print(f"  FAIL archive {page_id}: {e}", file=sys.stderr)
+        time.sleep(sleep)
+    return removed, kept
+
+
 def load_state() -> dict[str, Any]:
     if STATE_PATH.is_file():
         return json.loads(STATE_PATH.read_text(encoding="utf-8"))
@@ -615,6 +693,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--fit",
         default="high,medium",
         help="Fit levels for --include-new / --scraped-only (comma-separated)",
+    )
+    p.add_argument(
+        "--no-purge-expired",
+        dest="purge_expired",
+        action="store_false",
+        help="Keep Notion pages whose deadline has passed (default: archive them)",
+    )
+    p.add_argument(
+        "--keep-expired",
+        action="store_true",
+        help="Also upload scraped jobs whose deadline has passed",
     )
     p.add_argument("--rebuild", action="store_true")
     p.add_argument("--dry-run", action="store_true")
@@ -668,7 +757,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     jobs = build_sync_set(args)
-    if not jobs:
+    today = date.today().isoformat()
+    if not jobs and not (
+        args.purge_expired
+        and (os.environ.get("NOTION_DATABASE_ID") or load_state().get("database_id"))
+    ):
         print("Nothing to sync.")
         return 0
 
@@ -690,6 +783,26 @@ def main(argv: list[str] | None = None) -> int:
     parent = os.environ.get("NOTION_PARENT_PAGE_ID", "").strip() or None
     db_id = ensure_database(token, state, parent)
     ensure_properties(token, db_id)
+
+    expired_removed = expired_kept = 0
+    if args.purge_expired:
+        expired_removed, expired_kept = purge_expired_pages(
+            token, db_id, today, sleep=args.sleep
+        )
+        print(
+            f"Expired cleanup: archived {expired_removed} page(s); "
+            f"kept {expired_kept} with application history."
+        )
+        # 방금 지운 페이지를 곧바로 되살리지 않도록 만료 항목을 업서트 대상에서 뺀다
+        if not args.keep_expired:
+            jobs = [
+                j
+                for j in jobs
+                if not (
+                    is_expired(j.get("deadline"), today)
+                    and (j.get("status") or "").lower() not in KEEP_WHEN_EXPIRED
+                )
+            ]
 
     created = updated = failed = 0
     failures: list[str] = []
@@ -717,7 +830,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"## Pipeline Sync - {date.today().isoformat()}\n"
         f"Database: {state.get('database_url')}\n"
-        f"Synced {len(jobs)} jobs: {created} created, {updated} updated, {failed} failed."
+        f"Synced {len(jobs)} jobs: {created} created, {updated} updated, {failed} failed.\n"
+        f"Expired: {expired_removed} archived, {expired_kept} kept (application history)."
     )
     for f in failures[:10]:
         print(f"  FAIL {f}", file=sys.stderr)

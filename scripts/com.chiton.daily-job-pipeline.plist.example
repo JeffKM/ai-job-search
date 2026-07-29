@@ -6,9 +6,18 @@
   Setup:
     1. Fill job_scraper/notion.env from notion.env.example
     2. cp scripts/com.chiton.daily-job-pipeline.plist.example ~/Library/LaunchAgents/com.chiton.daily-job-pipeline.plist
-    3. Edit the plist: replace REPO_PATH with this repo's absolute path
+    3. Edit the plist: replace REPO_PATH with this repo's absolute path and
+       HOME_PATH with your home directory (launchd does not expand ~ or $HOME).
+       Use your MAIN checkout, never a temporary git worktree - deleting the
+       worktree leaves launchd pointing at a path that no longer exists, and
+       the job then fails silently every day.
     4. launchctl load ~/Library/LaunchAgents/com.chiton.daily-job-pipeline.plist
     5. Test: launchctl start com.chiton.daily-job-pipeline
+    6. Check it worked: tail job_scraper/logs/daily_$(date +%F).log
+
+  Note: launchd does not inherit your login shell PATH. The PATH below covers
+  the usual Homebrew locations; the script additionally probes ~/.bun/bin,
+  ~/.nvm/versions/node/*/bin and friends for bun.
 -->
 <plist version="1.0">
   <dict>
@@ -31,7 +40,7 @@
     <key>EnvironmentVariables</key>
     <dict>
       <key>PATH</key>
-      <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+      <string>HOME_PATH/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     </dict>
     <key>StandardOutPath</key>
     <string>REPO_PATH/job_scraper/logs/launchd.out.log</string>

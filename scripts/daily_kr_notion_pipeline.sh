@@ -68,8 +68,27 @@ run_search() {
   fi
 }
 
+# launchd는 로그인 셸 PATH를 물려받지 않는다. bun을 흔한 설치 위치에서 직접 찾는다.
 if ! command -v bun >/dev/null 2>&1; then
-  echo "ERROR: bun not found"
+  for cand in \
+    "$HOME/.bun/bin/bun" \
+    /opt/homebrew/bin/bun \
+    /usr/local/bin/bun \
+    "$HOME"/.nvm/versions/node/*/bin/bun \
+    "$HOME"/.local/share/pnpm/bun \
+    "$HOME"/.volta/bin/bun
+  do
+    if [[ -x "$cand" ]]; then
+      PATH="$(dirname "$cand"):$PATH"
+      export PATH
+      echo "found bun at $cand"
+      break
+    fi
+  done
+fi
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "ERROR: bun not found (PATH=$PATH)"
   exit 1
 fi
 
@@ -92,6 +111,6 @@ fi
 echo "→ Enrich seniority / role / stack (title + selective detail)"
 python3 tools/enrich_seen_jobs.py --fetch-detail --fit "$FIT" --limit 80
 
-echo "→ Notion sync (scraped-only fit=$FIT)"
+echo "→ Notion sync (scraped-only fit=$FIT, 마감 지난 공고는 휴지통으로 정리)"
 python3 tools/notion_sync_jobs.py --scraped-only --fit "$FIT"
 echo "===== done $(date +%T) ====="
